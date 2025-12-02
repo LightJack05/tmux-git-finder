@@ -2,6 +2,12 @@
 
 A simple tool to find git repositories in configured directories using fzf with tmux integration, and open them in tmux sessions.
 
+> [!CAUTION]
+> THIS TOOL IS AI GENERATED
+>
+> While I have tested it, read through the code and am using it myself, I do not guarantee anything about this tool. 
+> It seems to work quite well and appears like it is somewhat stable, but if it blows up, it blows up.
+
 ## Features
 
 - **Find Git Repositories**: Searches configured directories for git repositories
