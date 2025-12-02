@@ -1,0 +1,150 @@
+#!/usr/bin/env bash
+# tmux-git-finder: Find git repositories and open them in tmux sessions
+
+set -o pipefail
+
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/tmux-git-finder"
+CONFIG_FILE="$CONFIG_DIR/config"
+
+# Default search paths if not configured
+SEARCH_PATHS=("$HOME")
+
+# Default max depth for finding git repositories
+MAX_DEPTH=3
+
+# Check for required dependencies
+check_dependencies() {
+    local missing=()
+    
+    for cmd in fzf git tmux; do
+        if ! command -v "$cmd" &> /dev/null; then
+            missing+=("$cmd")
+        fi
+    done
+    
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo "Error: Missing required dependencies: ${missing[*]}" >&2
+        exit 1
+    fi
+}
+
+# Load configuration
+load_config() {
+    if [[ -f "$CONFIG_FILE" ]]; then
+        # shellcheck disable=SC1090
+        source "$CONFIG_FILE"
+    fi
+}
+
+# Find all git repositories in configured paths
+find_git_repos() {
+    for path in "${SEARCH_PATHS[@]}"; do
+        # Expand path
+        local expanded_path="${path/#\~/$HOME}"
+        
+        if [[ -d "$expanded_path" ]]; then
+            # Find directories containing .git
+            find "$expanded_path" -maxdepth "$MAX_DEPTH" -type d -name ".git" 2>/dev/null | \
+                while IFS= read -r git_dir; do
+                    # Output the parent directory (the actual repo)
+                    dirname "$git_dir"
+                done
+        fi
+    done
+}
+
+# Create or switch to tmux session for the selected directory
+open_session() {
+    local selected="$1"
+    
+    if [[ -z "$selected" ]]; then
+        exit 0
+    fi
+    
+    # Create session name from path:
+    # 1. Remove $HOME prefix
+    # 2. Remove leading slash
+    # 3. Replace dots with underscores (tmux doesn't like dots in session names)
+    local session_name
+    session_name=$(echo "$selected" | sed "s@$HOME@@g; s@^\/@@g; s@\.@_@g")
+    
+    # Check if session already exists
+    if tmux has-session -t="$session_name" 2>/dev/null; then
+        # Session exists, switch to it
+        if [[ -n "$TMUX" ]]; then
+            tmux switch-client -t "$session_name"
+        else
+            tmux attach-session -t "$session_name"
+        fi
+    else
+        # Create new session
+        tmux new-session -d -s "$session_name" -c "$selected"
+        if [[ -n "$TMUX" ]]; then
+            tmux switch-client -t "$session_name"
+        else
+            tmux attach-session -t "$session_name"
+        fi
+    fi
+}
+
+# Show help
+show_help() {
+    cat << EOF
+tmux-git-finder - Find git repositories and open them in tmux sessions
+
+Usage: tmux-git-finder [OPTIONS]
+
+Options:
+    -h, --help      Show this help message
+    -l, --list      List all git repositories without opening
+
+Configuration:
+    Config file: $CONFIG_FILE
+    
+    The config file allows you to configure:
+    - SEARCH_PATHS: Array of directories to search for git repositories
+    - MAX_DEPTH: Maximum depth to search for repositories (default: 3)
+
+Example config:
+    SEARCH_PATHS=("\$HOME/projects" "\$HOME/work")
+    MAX_DEPTH=4
+
+Examples:
+    tmux-git-finder              # Interactive repository selection
+    tmux-git-finder --list       # List all repositories
+
+EOF
+}
+
+# Main function
+main() {
+    load_config
+    check_dependencies
+    
+    # Stream repos directly to fzf for immediate display
+    local selected
+    selected=$(find_git_repos | fzf --tmux=center,100% --prompt="Select repository: ")
+    
+    open_session "$selected"
+}
+
+# Parse command line arguments
+case "${1:-}" in
+    -h|--help)
+        show_help
+        exit 0
+        ;;
+    -l|--list)
+        load_config
+        find_git_repos | sort -u
+        exit 0
+        ;;
+    "")
+        main
+        ;;
+    *)
+        echo "Error: Unknown option: $1" >&2
+        show_help
+        exit 1
+        ;;
+esac
