@@ -123,7 +123,7 @@ main() {
     
     # Stream repos directly to fzf for immediate display
     local selected
-    selected=$(find_git_repos | sort -u | fzf --tmux=center,100% --prompt="Select repository: ")
+    selected=$(find_git_repos | fzf --tmux=center,100% --prompt="Select repository: ")
     
     open_session "$selected"
 }
