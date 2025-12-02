@@ -61,13 +61,17 @@ open_session() {
         exit 0
     fi
     
-    # Create session name from path (relative to home, with special chars replaced)
+    # Create session name from path:
+    # 1. Remove $HOME prefix
+    # 2. Remove leading slash
+    # 3. Replace dots with underscores (tmux doesn't like dots in session names)
+    # 4. Replace slashes with underscores
     local session_name
     session_name=$(echo "$selected" | sed "s@$HOME@@g; s@^\/@@g; s@\.@_@g; s@/@_@g")
     
     # Check if tmux is running
     local tmux_running
-    tmux_running=$(pgrep tmux)
+    tmux_running=$(pgrep tmux || true)
     
     if [[ -z "$TMUX" ]] && [[ -z "$tmux_running" ]]; then
         # No tmux running, create new session and attach
@@ -129,8 +133,17 @@ main() {
     check_dependencies
     
     # Find repos and select with fzf
+    local repos
+    repos=$(find_git_repos | sort -u)
+    
+    if [[ -z "$repos" ]]; then
+        echo "No git repositories found in configured search paths." >&2
+        echo "Configure SEARCH_PATHS in $CONFIG_FILE" >&2
+        exit 1
+    fi
+    
     local selected
-    selected=$(find_git_repos | sort -u | fzf --tmux=center,100% --prompt="Select repository: ")
+    selected=$(echo "$repos" | fzf --tmux=center,100% --prompt="Select repository: ")
     
     open_session "$selected"
 }
